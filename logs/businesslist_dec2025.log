@@ -1,8 +1,0 @@
- businesslist 2025-12-01 -> 2025-12-31 (rate_per_sec=1.0)
-[businesslist] months to fetch: 1 (2025-12 -> 2025-12)
-[businesslist] month 2025-12: found 10 4D draw pages
-[businesslist] total unique draw pages: 10
-[businesslist] parsed 10/10
-[businesslist] rows in-range: 10
-2025-12-25 15:33:15,022 | INFO | dmc4d.datasets.results_store | Saved results -> data/raw/results.csv (rows=10)
-{'ok': True, 'results_csv': 'data/raw/results.csv', 'rows': 10}

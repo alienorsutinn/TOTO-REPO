@@ -1,6 +1,0 @@
- businesslist 2022-01-01 -> 2022-01-31 (rate_per_sec=0.5)
-[businesslist] months to fetch: 1 (2022-01 -> 2022-01)
-[businesslist] month 2022-01: found 10 4D draw pages
-[businesslist] total unique draw pages (in range): 0
-[businesslist] parsed 0/0
-{'ok': False, 'rows': 0, 'msg': 'No rows parsed (check scraper/parser).', 'results_csv': 'data/raw/results.csv'}

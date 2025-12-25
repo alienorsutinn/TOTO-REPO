@@ -16,3 +16,12 @@ reports/
 
 # OS
 .DS_Store
+
+# outputs
+data/raw/
+data/processed/
+logs/
+reports/
+
+# backups
+*.bak
