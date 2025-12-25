@@ -39,6 +39,7 @@ packages = [
   "dmc4d.data_sources",
   "dmc4d.datasets",
   "dmc4d.pricing",
+  "dmc4d.scoring",
   "dmc4d.crowd",
   "dmc4d.crowd.weights",
   "dmc4d.strategies",

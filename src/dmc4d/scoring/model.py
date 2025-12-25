@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from typing import Dict, Iterable, Tuple
 
 import pandas as pd
@@ -104,7 +104,7 @@ def score_numbers_long(
         )
 
     # training window
-    min_train_date = as_of - pd.Timedelta(days=int(cfg.train_window_days))
+    min_train_date = as_of - timedelta(days=int(cfg.train_window_days))
     train = hist[hist["date"] >= min_train_date].copy()
 
     # --- Frequency (bucket-weighted) ---

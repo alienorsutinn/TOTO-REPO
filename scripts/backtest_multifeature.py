@@ -1,0 +1,429 @@
+#!/usr/bin/env python3
+"""
+Multi-feature backtest for 4D numbers.
+
+- Trains rolling window feature distributions from historical draws
+- Scores entire universe 0000-9999 each day
+- Picks top-N by score
+- Backtests hit-rate vs actual winning numbers
+- Computes Monte Carlo p-values vs random picks of size N
+
+Features:
+- Digit marginals per position (pos0..pos3)
+- Optional pair marginals (pos01, pos23)
+- Dirichlet/Laplace smoothing alpha
+
+Targets:
+- Evaluate hits against a chosen set of buckets (e.g. top3 only, or all buckets)
+
+Assumes input numbers_long.csv contains columns:
+  date, bucket, num
+(others allowed: draw_no, operator, n, etc.)
+"""
+
+from __future__ import annotations
+
+import argparse
+import math
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
+import pandas as pd
+
+
+def fmt4(x) -> str:
+    """Format num as 4-digit string with leading zeros, or '' if invalid."""
+    try:
+        xi = int(x)
+    except Exception:
+        return ""
+    if xi < 0 or xi > 9999:
+        return ""
+    return f"{xi:04d}"
+
+
+def parse_date(s: str) -> pd.Timestamp:
+    return pd.to_datetime(s).normalize()
+
+
+def build_universe() -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Returns:
+      u_str: (10000,) strings "0000".."9999"
+      d0,d1,d2,d3: (10000,) uint8 digits
+      p01,p23: (10000,) uint16 pair indices 0..99
+    """
+    u = np.arange(10000, dtype=np.int32)
+    u_str = np.array([f"{i:04d}" for i in u], dtype=object)
+    d0 = (u // 1000).astype(np.uint8)
+    d1 = ((u // 100) % 10).astype(np.uint8)
+    d2 = ((u // 10) % 10).astype(np.uint8)
+    d3 = (u % 10).astype(np.uint8)
+    p01 = (d0 * 10 + d1).astype(np.uint16)
+    p23 = (d2 * 10 + d3).astype(np.uint16)
+    return u_str, d0, d1, d2, d3, p01, p23
+
+
+@dataclass
+class FeatureDists:
+    # digit counts per position: shape (4,10)
+    digit_counts: np.ndarray
+    # pair counts: shape (100,) each
+    pair01_counts: Optional[np.ndarray] = None
+    pair23_counts: Optional[np.ndarray] = None
+    n_obs: int = 0
+
+
+def compute_feature_dists(train_nums: np.ndarray, use_pairs: bool) -> FeatureDists:
+    """
+    train_nums: array of 4-char strings
+    """
+    # digits
+    digits = np.vstack([
+        np.fromiter((ord(s[0]) - 48 for s in train_nums), dtype=np.int16, count=len(train_nums)),
+        np.fromiter((ord(s[1]) - 48 for s in train_nums), dtype=np.int16, count=len(train_nums)),
+        np.fromiter((ord(s[2]) - 48 for s in train_nums), dtype=np.int16, count=len(train_nums)),
+        np.fromiter((ord(s[3]) - 48 for s in train_nums), dtype=np.int16, count=len(train_nums)),
+    ])
+    digit_counts = np.zeros((4, 10), dtype=np.int64)
+    for pos in range(4):
+        digit_counts[pos] = np.bincount(digits[pos], minlength=10)
+
+    if not use_pairs:
+        return FeatureDists(digit_counts=digit_counts, n_obs=int(len(train_nums)))
+
+    # pairs
+    p01 = (digits[0] * 10 + digits[1]).astype(np.int16)
+    p23 = (digits[2] * 10 + digits[3]).astype(np.int16)
+    pair01_counts = np.bincount(p01, minlength=100).astype(np.int64)
+    pair23_counts = np.bincount(p23, minlength=100).astype(np.int64)
+    return FeatureDists(
+        digit_counts=digit_counts,
+        pair01_counts=pair01_counts,
+        pair23_counts=pair23_counts,
+        n_obs=int(len(train_nums)),
+    )
+
+
+def score_universe(
+    fd: FeatureDists,
+    alpha: float,
+    use_pairs: bool,
+    u_digits: Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+    u_pairs: Tuple[np.ndarray, np.ndarray],
+    w_digits: float = 1.0,
+    w_pairs: float = 1.0,
+) -> np.ndarray:
+    """
+    Returns scores for 10k universe (higher is better).
+    Uses log-probabilities with Dirichlet smoothing alpha.
+    """
+    d0, d1, d2, d3 = u_digits
+    p01, p23 = u_pairs
+
+    # digit log probs
+    # P(d | pos) = (count + alpha) / (n_pos + 10*alpha)
+    scores = np.zeros(10000, dtype=np.float64)
+
+    for pos, dd in enumerate([d0, d1, d2, d3]):
+        counts = fd.digit_counts[pos].astype(np.float64)
+        denom = float(counts.sum() + 10.0 * alpha)
+        probs = (counts + alpha) / denom
+        scores += w_digits * np.log(probs[dd])
+
+    if use_pairs:
+        assert fd.pair01_counts is not None and fd.pair23_counts is not None
+        c01 = fd.pair01_counts.astype(np.float64)
+        c23 = fd.pair23_counts.astype(np.float64)
+        denom01 = float(c01.sum() + 100.0 * alpha)
+        denom23 = float(c23.sum() + 100.0 * alpha)
+        p01_probs = (c01 + alpha) / denom01
+        p23_probs = (c23 + alpha) / denom23
+        scores += w_pairs * np.log(p01_probs[p01])
+        scores += w_pairs * np.log(p23_probs[p23])
+
+    return scores
+
+
+def topn_from_scores(u_str: np.ndarray, scores: np.ndarray, top_n: int) -> List[str]:
+    """
+    Deterministic: sort by score desc, then numeric asc.
+    """
+    # argsort descending score, tie-breaker numeric asc
+    u_num = np.fromiter((int(s) for s in u_str), dtype=np.int32, count=len(u_str))
+    order = np.lexsort((u_num, -scores))
+    picks = u_str[order[:top_n]].tolist()
+    return picks
+
+
+def monte_carlo_pvalues(
+    dates: Sequence[pd.Timestamp],
+    actual_by_date: Dict[pd.Timestamp, set],
+    top_n: int,
+    trials: int,
+    rng: np.random.Generator,
+) -> Dict[str, float]:
+    """
+    Monte Carlo baseline: each day pick top_n uniform random numbers without replacement.
+    Returns p-values for >= observed statistics.
+    """
+    # Observed stats
+    hits_counts = []
+    any_hits = []
+    for dt in dates:
+        actual = actual_by_date.get(dt, set())
+        # actual is set of strings
+        # placeholder; filled in by caller for obs
+        pass
+
+    # Caller will pass obs separately; we just compute baseline distributions and compare.
+    raise RuntimeError("Use monte_carlo_compare(...) instead.")
+
+
+def monte_carlo_compare(
+    dates: Sequence[pd.Timestamp],
+    actual_by_date: Dict[pd.Timestamp, set],
+    obs_any_hit_rate: float,
+    obs_avg_hits: float,
+    obs_p_hits_ge2: float,
+    top_n: int,
+    trials: int,
+    seed: int,
+) -> Dict[str, float]:
+    rng = np.random.default_rng(seed)
+    n_days = len(dates)
+    ge_any = 0
+    ge_avg = 0
+    ge_ge2 = 0
+
+    # Pre-generate universe ints 0..9999 for speed
+    universe = np.arange(10000, dtype=np.int32)
+
+    for _ in range(trials):
+        hits_total = 0
+        any_total = 0
+        ge2_total = 0
+
+        # sample per day (independent)
+        for dt in dates:
+            actual = actual_by_date.get(dt, set())
+            if not actual:
+                continue
+            picks = rng.choice(universe, size=top_n, replace=False)
+            # compare as ints quickly
+            # actual are strings; convert once
+            # (small sizes: actual <= 23 per day typically)
+            actual_int = np.fromiter((int(x) for x in actual), dtype=np.int32, count=len(actual))
+            hits = int(np.isin(picks, actual_int).sum())
+            hits_total += hits
+            if hits > 0:
+                any_total += 1
+            if hits >= 2:
+                ge2_total += 1
+
+        any_hit_rate = any_total / n_days
+        avg_hits = hits_total / n_days
+        p_ge2 = ge2_total / n_days
+
+        if any_hit_rate >= obs_any_hit_rate:
+            ge_any += 1
+        if avg_hits >= obs_avg_hits:
+            ge_avg += 1
+        if p_ge2 >= obs_p_hits_ge2:
+            ge_ge2 += 1
+
+    # add-one smoothing
+    p_any = (ge_any + 1) / (trials + 1)
+    p_avg = (ge_avg + 1) / (trials + 1)
+    p_ge2 = (ge_ge2 + 1) / (trials + 1)
+
+    return {
+        "p_any_hit_rate": float(p_any),
+        "p_avg_hits_per_day": float(p_avg),
+        "p_p_hits_ge2": float(p_ge2),
+        "trials": int(trials),
+    }
+
+
+def load_numbers_long(path: str, bucket: str, operator: str, dedupe: bool) -> pd.DataFrame:
+    df = pd.read_csv(path)
+    if "date" not in df.columns or "bucket" not in df.columns or "num" not in df.columns:
+        raise ValueError(f"numbers_long missing required columns. Have: {list(df.columns)}")
+
+    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+    df["bucket"] = df["bucket"].astype(str).str.lower().str.strip()
+
+    if "operator" in df.columns:
+        df["operator"] = df["operator"].astype(str).str.lower().str.strip()
+    else:
+        df["operator"] = "unknown"
+
+    if operator != "all":
+        df = df[df["operator"] == operator.lower()]
+
+    if bucket != "all":
+        df = df[df["bucket"] == bucket.lower()]
+
+    df["n4"] = df["num"].apply(fmt4)
+    df = df[df["n4"].str.len() == 4].copy()
+
+    if dedupe:
+        before = len(df)
+        df = df.drop_duplicates(subset=["date", "bucket", "operator", "n4"], keep="first")
+        dropped = before - len(df)
+        if dropped:
+            print(f"[dedupe] dropped {dropped} duplicate rows")
+
+    return df
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--numbers-long", required=True)
+    ap.add_argument("--start", required=True)
+    ap.add_argument("--end", required=True)
+
+    ap.add_argument("--train-window-days", type=int, default=365)
+    ap.add_argument("--top", type=int, default=20)
+    ap.add_argument("--alpha", type=float, default=1.0)
+
+    ap.add_argument("--train-bucket", default="top3", help="bucket used to fit feature dists (default: top3)")
+    ap.add_argument("--target-buckets", default="top3", help="comma list for hit evaluation: top3|starter|consolation|all")
+
+    ap.add_argument("--operator", default="all")
+    ap.add_argument("--dedupe", action="store_true")
+
+    ap.add_argument("--use-pairs", action="store_true", help="include pair (pos01,pos23) features")
+    ap.add_argument("--w-digits", type=float, default=1.0)
+    ap.add_argument("--w-pairs", type=float, default=1.0)
+
+    ap.add_argument("--random-trials", type=int, default=5000)
+    ap.add_argument("--seed", type=int, default=7)
+
+    ap.add_argument("--out", default="data/processed/backtest_multifeature.csv")
+    args = ap.parse_args()
+
+    start = parse_date(args.start)
+    end = parse_date(args.end)
+
+    # Load once for training, once for targets (can differ)
+    df_train = load_numbers_long(args.numbers_long, bucket=args.train_bucket, operator=args.operator, dedupe=args.dedupe)
+    df_all = load_numbers_long(args.numbers_long, bucket="all", operator=args.operator, dedupe=args.dedupe)
+
+    df_train = df_train[(df_train["date"] >= start) & (df_train["date"] <= end)].copy()
+    df_all = df_all[(df_all["date"] >= start) & (df_all["date"] <= end)].copy()
+
+    target_buckets = [b.strip().lower() for b in args.target_buckets.split(",") if b.strip()]
+    if "all" in target_buckets:
+        target_buckets = ["top3", "starter", "consolation"]
+
+    # Build actual_by_date (set of winning numbers) for target buckets
+    df_targets = df_all[df_all["bucket"].isin(target_buckets)].copy()
+    actual_by_date: Dict[pd.Timestamp, set] = (
+        df_targets.groupby("date")["n4"].apply(lambda s: set(s.tolist())).to_dict()
+    )
+
+    # Dates to test: dates present in df_train after the first window is available
+    all_dates = sorted(df_all["date"].unique())
+    all_dates = [pd.Timestamp(d).normalize() for d in all_dates if start <= pd.Timestamp(d).normalize() <= end]
+
+    u_str, d0, d1, d2, d3, p01, p23 = build_universe()
+    u_digits = (d0, d1, d2, d3)
+    u_pairs = (p01, p23)
+
+    rows = []
+    tested_dates = []
+
+    for dt in all_dates:
+        train_start = dt - pd.Timedelta(days=args.train_window_days)
+        train_end = dt - pd.Timedelta(days=1)
+
+        hist = df_train[(df_train["date"] >= train_start) & (df_train["date"] <= train_end)]
+        if hist.empty:
+            continue
+
+        train_nums = hist["n4"].to_numpy(dtype=object)
+        fd = compute_feature_dists(train_nums, use_pairs=args.use_pairs)
+        scores = score_universe(
+            fd,
+            alpha=float(args.alpha),
+            use_pairs=args.use_pairs,
+            u_digits=u_digits,
+            u_pairs=u_pairs,
+            w_digits=float(args.w_digits),
+            w_pairs=float(args.w_pairs),
+        )
+        picks = topn_from_scores(u_str, scores, top_n=int(args.top))
+
+        actual = actual_by_date.get(dt, set())
+        if not actual:
+            # If target buckets missing for that date, skip
+            continue
+
+        hits = sorted(set(picks).intersection(actual))
+        hits_count = len(hits)
+
+        rows.append(
+            {
+                "date": str(dt.date()),
+                "train_window_days": int(args.train_window_days),
+                "top": int(args.top),
+                "alpha": float(args.alpha),
+                "train_bucket": args.train_bucket.lower(),
+                "target_buckets": ",".join(target_buckets),
+                "use_pairs": bool(args.use_pairs),
+                "w_digits": float(args.w_digits),
+                "w_pairs": float(args.w_pairs),
+                "train_n_obs": int(fd.n_obs),
+                "hits_count": int(hits_count),
+                "any_hit": int(hits_count > 0),
+                "hits": ",".join(hits),
+                "picks": ",".join(picks),
+            }
+        )
+        tested_dates.append(dt)
+
+    out = pd.DataFrame(rows)
+    out.to_csv(args.out, index=False)
+    print(f"Wrote: {args.out}")
+
+    if out.empty:
+        print("No test rows produced (check date range / buckets).")
+        return
+
+    days_tested = int(len(out))
+    any_hit_rate = float(out["any_hit"].mean())
+    avg_hits = float(out["hits_count"].mean())
+    p_hits_ge2 = float((out["hits_count"] >= 2).mean())
+
+    print("\nSummary:")
+    print(f"  days_tested: {days_tested}")
+    print(f"  any_hit_rate: {any_hit_rate}")
+    print(f"  avg_hits_per_day: {avg_hits}")
+    print(f"  p_hits_ge2: {p_hits_ge2}")
+
+    pv = monte_carlo_compare(
+        dates=tested_dates,
+        actual_by_date=actual_by_date,
+        obs_any_hit_rate=any_hit_rate,
+        obs_avg_hits=avg_hits,
+        obs_p_hits_ge2=p_hits_ge2,
+        top_n=int(args.top),
+        trials=int(args.random_trials),
+        seed=int(args.seed) + 12345,
+    )
+
+    print("\nP-values vs random (>= observed):")
+    print(f"  p_any_hit_rate: {pv['p_any_hit_rate']}")
+    print(f"  p_avg_hits_per_day: {pv['p_avg_hits_per_day']}")
+    print(f"  p_p_hits_ge2: {pv['p_p_hits_ge2']}")
+    print(f"  trials: {pv['trials']}")
+
+    print("\nLast 10 days:")
+    cols = ["date", "hits_count", "any_hit", "hits", "picks"]
+    print(out.tail(10)[cols].to_string(index=False))
+
+
+if __name__ == "__main__":
+    main()
