@@ -4,6 +4,7 @@ from dmc4d.strategies.low_crowd import LowCrowd
 from dmc4d.strategies.random_pick import RandomPick
 from dmc4d.strategies.base import Strategy
 
+
 def create_strategy(name: str, seed: int = 0) -> Strategy:
     n = name.strip().lower()
     if n == "random":

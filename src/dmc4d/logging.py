@@ -3,6 +3,7 @@ import logging
 import sys
 from dmc4d.config import CFG
 
+
 def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     if logger.handlers:

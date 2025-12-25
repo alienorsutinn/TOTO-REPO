@@ -4,6 +4,7 @@ from typing import Literal
 
 BetType = Literal["BIG", "SMALL"]
 
+
 @dataclass(frozen=True)
 class Bet:
     number: str

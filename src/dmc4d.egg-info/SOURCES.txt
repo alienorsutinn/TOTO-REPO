@@ -1,6 +1,7 @@
 README.md
 pyproject.toml
 src/dmc4d/__init__.py
+src/dmc4d/__main__.py
 src/dmc4d/config.py
 src/dmc4d/logging.py
 src/dmc4d/types.py
@@ -24,6 +25,7 @@ src/dmc4d/crowd/weights/__init__.py
 src/dmc4d/crowd/weights/default.py
 src/dmc4d/data_sources/__init__.py
 src/dmc4d/data_sources/base.py
+src/dmc4d/data_sources/damacai_api.py
 src/dmc4d/data_sources/local_csv.py
 src/dmc4d/datasets/__init__.py
 src/dmc4d/datasets/births_store.py

@@ -3,6 +3,7 @@ import random
 from dmc4d.strategies.base import Strategy
 from dmc4d.types import Bet
 
+
 class RandomPick(Strategy):
     name = "random"
 

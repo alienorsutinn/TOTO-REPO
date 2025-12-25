@@ -1,6 +1,7 @@
 from __future__ import annotations
 import pandas as pd
 
+
 def longest_losing_streak(hit: pd.Series) -> int:
     longest = 0
     cur = 0
@@ -11,6 +12,7 @@ def longest_losing_streak(hit: pd.Series) -> int:
         else:
             cur = 0
     return int(longest)
+
 
 def summarize(per_draw: pd.DataFrame) -> dict:
     stake = float(per_draw["stake_rm"].sum())

@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 from dmc4d.backtest.metrics import summarize
 
+
 def write_reports(per_draw: pd.DataFrame, out_dir: Path) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     summary = summarize(per_draw)

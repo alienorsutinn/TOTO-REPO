@@ -6,6 +6,7 @@ from dmc4d.logging import get_logger
 
 log = get_logger(__name__)
 
+
 def upsert_results(rows: list[dict], out_path: Path) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     df_new = pd.DataFrame(rows)
@@ -32,6 +33,7 @@ def upsert_results(rows: list[dict], out_path: Path) -> Path:
     df_out.to_csv(out_path, index=False)
     log.info("Saved results -> %s (rows=%d)", out_path, len(df_out))
     return out_path
+
 
 def read_results(out_path: Path) -> pd.DataFrame:
     df = pd.read_csv(out_path)

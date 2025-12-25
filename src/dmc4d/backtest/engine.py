@@ -9,25 +9,36 @@ from dmc4d.strategies.base import Strategy
 from dmc4d.types import Bet
 from dmc4d.utils.strings import z4
 
+
 @dataclass(frozen=True)
 class BacktestConfig:
     start: str
     end: str
     budget_rm: int
 
+
 def _payout_for_bet(bet: Bet, top3: list[str], starter: set[str], consolation: set[str]) -> int:
     n = z4(bet.number)
     if bet.bet_type == "BIG":
-        if n == top3[0]: return BIG_PAYOUT["1st"]
-        if n == top3[1]: return BIG_PAYOUT["2nd"]
-        if n == top3[2]: return BIG_PAYOUT["3rd"]
-        if n in starter: return BIG_PAYOUT["starter"]
-        if n in consolation: return BIG_PAYOUT["consolation"]
+        if n == top3[0]:
+            return BIG_PAYOUT["1st"]
+        if n == top3[1]:
+            return BIG_PAYOUT["2nd"]
+        if n == top3[2]:
+            return BIG_PAYOUT["3rd"]
+        if n in starter:
+            return BIG_PAYOUT["starter"]
+        if n in consolation:
+            return BIG_PAYOUT["consolation"]
         return 0
-    if n == top3[0]: return SMALL_PAYOUT["1st"]
-    if n == top3[1]: return SMALL_PAYOUT["2nd"]
-    if n == top3[2]: return SMALL_PAYOUT["3rd"]
+    if n == top3[0]:
+        return SMALL_PAYOUT["1st"]
+    if n == top3[1]:
+        return SMALL_PAYOUT["2nd"]
+    if n == top3[2]:
+        return SMALL_PAYOUT["3rd"]
     return 0
+
 
 def run_backtest(results_csv: Path, strategy: Strategy, cfg: BacktestConfig) -> pd.DataFrame:
     df = read_results(results_csv)
@@ -54,13 +65,15 @@ def run_backtest(results_csv: Path, strategy: Strategy, cfg: BacktestConfig) -> 
 
         stake = sum(b.stake_rm for b in bets)
         payout = sum(_payout_for_bet(b, top3, starter, consolation) for b in bets)
-        rows.append({
-            "date": row["date"],
-            "draw_no": row["draw_no"],
-            "operator": row["operator"],
-            "stake_rm": stake,
-            "payout_rm": payout,
-            "profit_rm": payout - stake,
-            "hit": int(payout > 0),
-        })
+        rows.append(
+            {
+                "date": row["date"],
+                "draw_no": row["draw_no"],
+                "operator": row["operator"],
+                "stake_rm": stake,
+                "payout_rm": payout,
+                "profit_rm": payout - stake,
+                "hit": int(payout > 0),
+            }
+        )
     return pd.DataFrame(rows)

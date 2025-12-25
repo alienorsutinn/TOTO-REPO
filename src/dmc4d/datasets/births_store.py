@@ -5,7 +5,10 @@ from dmc4d.logging import get_logger
 
 log = get_logger(__name__)
 
-def build_birth_maps(births_csv: Path, out_dir: Path, year_min: int = 1950, year_max: int = 2007) -> dict[str, Path]:
+
+def build_birth_maps(
+    births_csv: Path, out_dir: Path, year_min: int = 1950, year_max: int = 2007
+) -> dict[str, Path]:
     out_dir.mkdir(parents=True, exist_ok=True)
     df = pd.read_csv(births_csv)
     if "date" not in df.columns or "births" not in df.columns:

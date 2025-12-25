@@ -1,0 +1,256 @@
+from __future__ import annotations
+
+import re
+import time
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from typing import Iterable
+from urllib.parse import urljoin
+
+import requests
+from bs4 import BeautifulSoup
+
+BASE_HISTORY_URL = "https://www.businesslist.my/damacai/results/history"
+BASE_SITE = "https://www.businesslist.my"
+
+
+def _month_iter(start_d: date, end_d: date) -> list[str]:
+    """Inclusive list of YYYY-MM between start and end."""
+    cur = date(start_d.year, start_d.month, 1)
+    end_m = date(end_d.year, end_d.month, 1)
+    out: list[str] = []
+    while cur <= end_m:
+        out.append(f"{cur.year:04d}-{cur.month:02d}")
+        # advance 1 month
+        if cur.month == 12:
+            cur = date(cur.year + 1, 1, 1)
+        else:
+            cur = date(cur.year, cur.month + 1, 1)
+    return out
+
+
+def _extract_draw_date_from_url(draw_url: str) -> date | None:
+    m = re.search(r"4d-damacai-(\d{4}-\d{2}-\d{2})-\d+", draw_url)
+    if not m:
+        return None
+    return datetime.strptime(m.group(1), "%Y-%m-%d").date()
+
+
+def _iso_from_ddmmyyyy(s: str) -> str:
+    d = datetime.strptime(s, "%d/%m/%Y").date()
+    return d.strftime("%Y-%m-%d")
+
+
+def _dedupe_preserve_order(items: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for x in items:
+        if x in seen:
+            continue
+        seen.add(x)
+        out.append(x)
+    return out
+
+
+@dataclass
+class BusinessListResults:
+    rate_per_sec: float = 1.0
+    timeout_sec: int = 30
+
+    def __post_init__(self) -> None:
+        self._min_interval = 1.0 / max(self.rate_per_sec, 0.001)
+        self._last_req_ts = 0.0
+        self._session = requests.Session()
+        self._headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-GB,en;q=0.9",
+        }
+
+    def _sleep_rate_limit(self) -> None:
+        now = time.time()
+        dt = now - self._last_req_ts
+        if dt < self._min_interval:
+            time.sleep(self._min_interval - dt)
+        self._last_req_ts = time.time()
+
+    def _request(self, method: str, url: str, **kwargs) -> requests.Response:
+        self._sleep_rate_limit()
+        kwargs.setdefault("headers", self._headers)
+        kwargs.setdefault("timeout", self.timeout_sec)
+        r = self._session.request(method, url, **kwargs)
+        r.raise_for_status()
+        return r
+
+    def _extract_4d_draw_urls_from_history_html(self, html: str) -> list[str]:
+        soup = BeautifulSoup(html, "lxml")
+        hrefs = []
+        for a in soup.select("a[href]"):
+            href = a.get("href") or ""
+            if "/damacai/draw/4d-damacai-" in href:
+                hrefs.append(urljoin(BASE_SITE, href))
+        return _dedupe_preserve_order(hrefs)
+
+    def _history_page_filtered_ok(self, ym: str, draw_urls: list[str]) -> bool:
+        # If filtered, we should see draw links containing that YYYY-MM in the slug.
+        needle = f"4d-damacai-{ym}-"
+        return any(needle in u for u in draw_urls)
+
+    def _fetch_history_month_html(self, ym: str) -> str:
+        """
+        BusinessList month selector behaves like a form submit.
+        We try POST first (common for CakePHP-ish forms), then GET with params.
+        """
+        payload = {"data[Lottery][date]": ym}
+
+        # 1) try POST
+        try:
+            r = self._request("POST", BASE_HISTORY_URL, data=payload)
+            html = r.text or ""
+            urls = self._extract_4d_draw_urls_from_history_html(html)
+            if self._history_page_filtered_ok(ym, urls):
+                return html
+        except Exception:
+            pass
+
+        # 2) fallback GET params
+        r = self._request("GET", BASE_HISTORY_URL, params=payload)
+        html = r.text or ""
+        return html
+
+    def _extract_number_list(self, text: str, headings: list[str], n: int) -> list[str]:
+        lower = text.lower()
+        for h in headings:
+            pos = lower.find(h.lower())
+            if pos == -1:
+                continue
+            window = text[pos : pos + 5000]
+            nums = re.findall(r"\b\d{4}\b", window)
+            out: list[str] = []
+            for x in nums:
+                if x not in out:
+                    out.append(x)
+            if len(out) >= n:
+                return out[:n]
+        return []
+
+    def _parse_draw_page(self, url: str) -> dict | None:
+        r = self._request("GET", url)
+        html = r.text or ""
+        soup = BeautifulSoup(html, "lxml")
+        text = soup.get_text(" ", strip=True)
+
+        # --- DATE ---
+        iso_date: str | None = None
+        # Try multiple patterns (site copy varies by year/page template)
+        date_patterns = [
+            r"Draw\s*Date\s*:\s*(\d{2}/\d{2}/\d{4})",
+            r"Draw\s*date\s*:\s*(\d{2}/\d{2}/\d{4})",
+            r"Date\s*:\s*(\d{2}/\d{2}/\d{4})",
+            r"Draw\s*On\s*:\s*(\d{2}/\d{2}/\d{4})",
+        ]
+        for dp in date_patterns:
+            mm = re.search(dp, text, re.I)
+            if mm:
+                iso_date = _iso_from_ddmmyyyy(mm.group(1))
+                break
+
+        # Fallback: derive from URL slug: 4d-damacai-YYYY-MM-DD-xxxx
+        if iso_date is None:
+            d = _extract_draw_date_from_url(url)
+            if d is not None:
+                iso_date = d.strftime("%Y-%m-%d")
+
+        if iso_date is None:
+            return None
+
+        # --- DRAW NO ---
+        draw_no: str | None = None
+        # Typical formats seen: 6012/25, 0123/22, etc.
+        mm = re.search(r"\b(\d{3,5}/\d{2})\b", text)
+        if mm:
+            draw_no = mm.group(1)
+
+        # Fallback: stable unique id from URL tail
+        if draw_no is None:
+            mm = re.search(r"-(\d+)$", url)
+            draw_no = f"BL-{mm.group(1)}" if mm else f"BL-{iso_date}"
+
+        # --- NUMBERS ---
+        top3 = self._extract_number_list(
+            text,
+            headings=["1st Prize", "First Prize", "1st", "First"],
+            n=3,
+        )
+        starter = self._extract_number_list(
+            text,
+            headings=["Starter Prizes", "Starter Prize", "Starter"],
+            n=10,
+        )
+        consolation = self._extract_number_list(
+            text,
+            headings=["Consolation Prizes", "Consolation Prize", "Consolation"],
+            n=10,
+        )
+
+        if len(top3) != 3 or len(starter) != 10 or len(consolation) != 10:
+            return None
+
+        return {
+            "date": iso_date,
+            "draw_no": draw_no,
+            "operator": "DMC",
+            "top3": top3,
+            "starter": starter,
+            "consolation": consolation,
+        }
+
+    def fetch_range(self, start_d: date, end_d: date) -> list[dict]:
+self, start_d: date, end_d: date) -> list[dict]:
+        months = _month_iter(start_d, end_d)
+        print(
+            f"[businesslist] months to fetch: {len(months)} ({months[0]} -> {months[-1]})",
+            flush=True,
+        )
+
+        all_draw_urls: list[str] = []
+        for ym in months:
+            html = self._fetch_history_month_html(ym)
+            urls = self._extract_4d_draw_urls_from_history_html(html)
+
+            # If filter didn’t apply, warn (still proceed — we’ll date-filter later)
+            if not self._history_page_filtered_ok(ym, urls):
+                print(
+                    f"[businesslist] WARNING: month filter may not apply for {ym} (got {len(urls)} urls)",
+                    flush=True,
+                )
+
+            print(f"[businesslist] month {ym}: found {len(urls)} 4D draw pages", flush=True)
+            all_draw_urls.extend(urls)
+
+        # De-dupe across months, then keep only URLs in date range
+        all_draw_urls = _dedupe_preserve_order(all_draw_urls)
+
+        in_range_urls: list[str] = []
+        for u in all_draw_urls:
+            d = _extract_draw_date_from_url(u)
+            if not d:
+                continue
+            if start_d <= d <= end_d:
+                in_range_urls.append(u)
+
+        in_range_urls = _dedupe_preserve_order(in_range_urls)
+        print(
+            f"[businesslist] total unique draw pages (in range): {len(in_range_urls)}", flush=True
+        )
+
+        rows: list[dict] = []
+        for i, url in enumerate(in_range_urls, 1):
+            row = self._parse_draw_page(url)
+            if not row:
+                print(f"[businesslist] ({i}/{len(in_range_urls)}) parse failed: {url}", flush=True)
+                continue
+            rows.append(row)
+
+        print(f"[businesslist] parsed {len(rows)}/{len(in_range_urls)}", flush=True)
+        return rows

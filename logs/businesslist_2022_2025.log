@@ -1,0 +1,108 @@
+ businesslist 2022-01-01 -> 2025-12-31 (rate_per_sec=1.0)
+[businesslist] months to fetch: 48 (2022-01 -> 2025-12)
+[businesslist] month 2022-01: found 15 4D draw pages
+[businesslist] month 2022-02: found 14 4D draw pages
+[businesslist] month 2022-03: found 14 4D draw pages
+[businesslist] month 2022-04: found 13 4D draw pages
+[businesslist] month 2022-05: found 14 4D draw pages
+[businesslist] month 2022-06: found 15 4D draw pages
+[businesslist] month 2022-07: found 16 4D draw pages
+[businesslist] month 2022-08: found 16 4D draw pages
+[businesslist] month 2022-09: found 14 4D draw pages
+[businesslist] month 2022-10: found 16 4D draw pages
+[businesslist] month 2022-11: found 16 4D draw pages
+[businesslist] month 2022-12: found 16 4D draw pages
+[businesslist] month 2023-01: found 15 4D draw pages
+[businesslist] month 2023-02: found 12 4D draw pages
+[businesslist] month 2023-03: found 14 4D draw pages
+[businesslist] month 2023-04: found 14 4D draw pages
+[businesslist] month 2023-05: found 14 4D draw pages
+[businesslist] month 2023-06: found 12 4D draw pages
+[businesslist] month 2023-07: found 15 4D draw pages
+[businesslist] month 2023-08: found 14 4D draw pages
+[businesslist] month 2023-09: found 13 4D draw pages
+[businesslist] month 2023-10: found 14 4D draw pages
+[businesslist] month 2023-11: found 13 4D draw pages
+[businesslist] month 2023-12: found 15 4D draw pages
+[businesslist] month 2024-01: found 13 4D draw pages
+[businesslist] month 2024-02: found 14 4D draw pages
+[businesslist] month 2024-03: found 15 4D draw pages
+[businesslist] month 2024-04: found 12 4D draw pages
+[businesslist] month 2024-05: found 14 4D draw pages
+[businesslist] month 2024-06: found 15 4D draw pages
+[businesslist] month 2024-07: found 13 4D draw pages
+[businesslist] month 2024-08: found 14 4D draw pages
+[businesslist] month 2024-09: found 13 4D draw pages
+[businesslist] month 2024-10: found 14 4D draw pages
+[businesslist] month 2024-11: found 13 4D draw pages
+[businesslist] month 2024-12: found 14 4D draw pages
+[businesslist] month 2025-01: found 14 4D draw pages
+[businesslist] month 2025-02: found 14 4D draw pages
+[businesslist] month 2025-03: found 14 4D draw pages
+[businesslist] month 2025-04: found 14 4D draw pages
+[businesslist] month 2025-05: found 14 4D draw pages
+[businesslist] month 2025-06: found 13 4D draw pages
+[businesslist] month 2025-07: found 14 4D draw pages
+[businesslist] month 2025-08: found 14 4D draw pages
+[businesslist] month 2025-09: found 12 4D draw pages
+[businesslist] month 2025-10: found 14 4D draw pages
+[businesslist] month 2025-11: found 14 4D draw pages
+[businesslist] month 2025-12: found 10 4D draw pages
+[businesslist] total unique draw pages (in range): 669
+[businesslist] (1/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-30-3538
+[businesslist] (2/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-29-3527
+[businesslist] (3/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-26-3515
+[businesslist] (4/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-25-3501
+[businesslist] (5/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-23-3495
+[businesslist] (6/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-22-3484
+[businesslist] (7/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-19-3471
+[businesslist] (8/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-16-3460
+[businesslist] (9/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-15-3453
+[businesslist] (10/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-12-3446
+[businesslist] (11/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-09-3424
+[businesslist] (12/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-08-3427
+[businesslist] (13/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-05-3430
+[businesslist] (14/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-02-3433
+[businesslist] (15/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-01-01-3436
+[businesslist] (16/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-27-3695
+[businesslist] (17/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-26-3681
+[businesslist] (18/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-23-3668
+[businesslist] (19/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-20-3660
+[businesslist] (20/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-19-3650
+[businesslist] (21/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-16-3637
+[businesslist] (22/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-15-3623
+[businesslist] (23/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-13-3616
+[businesslist] (24/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-12-3607
+[businesslist] (25/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-09-3594
+[businesslist] (26/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-08-3580
+[businesslist] (27/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-06-3574
+[businesslist] (28/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-05-3563
+[businesslist] (29/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-02-02-3547
+[businesslist] (30/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-30-3855
+[businesslist] (31/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-29-3846
+[businesslist] (32/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-27-3839
+[businesslist] (33/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-26-3825
+[businesslist] (34/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-23-3817
+[businesslist] (35/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-20-3803
+[businesslist] (36/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-19-3793
+[businesslist] (37/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-16-3776
+[businesslist] (38/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-13-3768
+[businesslist] (39/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-12-3757
+[businesslist] (40/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-09-3744
+[businesslist] (41/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-06-3731
+[businesslist] (42/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-05-3718
+[businesslist] (43/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-03-02-3704
+[businesslist] (44/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-30-4016
+[businesslist] (45/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-27-4003
+[businesslist] (46/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-24-3990
+[businesslist] (47/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-23-3980
+[businesslist] (48/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-20-3967
+[businesslist] (49/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-17-3954
+[businesslist] (50/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-16-3940
+[businesslist] (51/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-13-3931
+[businesslist] (52/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-10-3914
+[businesslist] (53/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-09-3908
+[businesslist] (54/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-06-3891
+[businesslist] (55/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-03-3882
+[businesslist] (56/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-04-02-3872
+[businesslist] (57/669) parse failed: https://www.businesslist.my/damacai/draw/4d-damacai-2022-05-31-4177
