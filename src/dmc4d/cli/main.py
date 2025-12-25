@@ -69,7 +69,16 @@ def cmd_fetch_results(
         raise typer.BadParameter("Only source=local or source=businesslist implemented")
 
     if not rows:
-        print(
+        # Ensure results.csv exists even when empty (prevents FileNotFoundError downstream).
+        try:
+            import csv
+            out_dir.mkdir(parents=True, exist_ok=True)
+            with out_path.open("w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(["date","draw_no","operator","top3","starter","consolation"])
+        except Exception:
+            pass
+        return {"ok": False, "rows": 0, "msg": "No rows parsed (check scraper/parser).", "results_csv": str(out_path)}
             {
                 "ok": False,
                 "rows": 0,
