@@ -1,0 +1,2 @@
+[console_scripts]
+dmc4d = dmc4d.cli.main:app
