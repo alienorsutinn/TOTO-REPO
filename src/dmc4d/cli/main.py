@@ -79,6 +79,20 @@ def cmd_fetch_results(
         )
         return
 
+    if not rows:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        # overwrite any previous results file so it’s obvious we got nothing
+        out_path.write_text("date,draw_no,operator,top3,starter,consolation\n", encoding="utf-8")
+        print(
+            {
+                "ok": False,
+                "rows": 0,
+                "msg": "No rows parsed (check scraper/parser).",
+                "results_csv": str(out_path),
+            }
+        )
+        raise typer.Exit(code=0)
+
     upsert_results(rows, out_path)
     print({"ok": True, "results_csv": str(out_path), "rows": len(rows)})
 

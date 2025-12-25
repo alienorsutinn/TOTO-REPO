@@ -3,248 +3,176 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass
-from datetime import date, datetime
-from typing import Any
+from datetime import date
+from typing import Iterable
 from urllib.parse import urljoin
 
+import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
+BASE_HISTORY_URL = "https://www.businesslist.my/damacai/results/history"
 
-def _iso_from_ddmmyyyy(s: str) -> str:
-    dt = datetime.strptime(s, "%d/%m/%Y")
-    return dt.strftime("%Y-%m-%d")
-
-
-def _extract_draw_date_from_url(url: str) -> date | None:
-    """
-    BusinessList draw URLs usually look like:
-      .../4d-damacai-YYYY-MM-DD-<id>
-    """
-    m = re.search(r"4d-damacai-(\d{4})-(\d{2})-(\d{2})-", url)
-    if not m:
-        return None
-    y, mo, d = map(int, m.groups())
-    return date(y, mo, d)
+HDRS = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-GB,en;q=0.9",
+    "Referer": BASE_HISTORY_URL,
+}
 
 
-def _iter_months(start_d: date, end_d: date) -> list[str]:
-    months: list[str] = []
+_DRAW_URL_RE = re.compile(r"/damacai/draw/4d-damacai-(\d{4}-\d{2}-\d{2})-(\d+)")
+_DRAWNO_RE = re.compile(r"\b(\d{4}/\d{2})\b")
+
+
+def _month_iter(start_d: date, end_d: date) -> Iterable[str]:
     y, m = start_d.year, start_d.month
     while (y < end_d.year) or (y == end_d.year and m <= end_d.month):
-        months.append(f"{y:04d}-{m:02d}")
+        yield f"{y:04d}-{m:02d}"
         m += 1
         if m == 13:
             m = 1
             y += 1
-    return months
 
 
 @dataclass
 class BusinessListResults:
     rate_per_sec: float = 1.0
-    timeout: int = 30
+    timeout_sec: int = 30
 
     def __post_init__(self) -> None:
-        self._session = requests.Session()
-        self._last_req_ts = 0.0
+        self._sleep = 0.0 if self.rate_per_sec <= 0 else 1.0 / float(self.rate_per_sec)
+        self._sess = requests.Session()
 
-    @property
-    def _min_interval(self) -> float:
-        if self.rate_per_sec <= 0:
-            return 0.0
-        return 1.0 / self.rate_per_sec
-
-    def _sleep_if_needed(self) -> None:
-        now = time.time()
-        wait = self._min_interval - (now - self._last_req_ts)
-        if wait > 0:
-            time.sleep(wait)
-
-    def _request(self, method: str, url: str, **kwargs: Any) -> requests.Response:
-        self._sleep_if_needed()
-        headers = kwargs.pop("headers", {}) or {}
-        headers.setdefault("User-Agent", "Mozilla/5.0")
-        r = self._session.request(method, url, headers=headers, timeout=self.timeout, **kwargs)
-        self._last_req_ts = time.time()
+    def _get(self, url: str) -> str:
+        if self._sleep > 0:
+            time.sleep(self._sleep)
+        r = self._sess.get(url, headers=HDRS, timeout=self.timeout_sec)
         r.raise_for_status()
-        return r
+        return r.text or ""
 
-    def _discover_month_urls(self) -> dict[str, str]:
-        """
-        Month pages:
-          https://www.businesslist.my/damacai/results/history?data[Lottery][date]=YYYY-MM
-        """
-        base = "https://www.businesslist.my/damacai/results/history"
-        # build from first available month on site if needed, but we can just generate dynamically
-        # (caller filters by date range anyway)
-        month_urls: dict[str, str] = {}
+    def _month_url(self, ym: str) -> str:
+        # IMPORTANT: businesslist expects this exact query key formatting.
+        return f"{BASE_HISTORY_URL}?data[Lottery][date]={ym}"
 
-        # We keep it lazy: caller supplies months; we just format URL.
-        # This function is retained for compatibility with earlier code structure.
-        def working(ym: str) -> str:
-            return f"{base}?data[Lottery][date]={ym}"
+    def _discover_draw_urls_for_month(self, ym: str) -> list[str]:
+        html = self._get(self._month_url(ym))
+        soup = BeautifulSoup(html, "html.parser")
 
-        # Generate a wide set (2018..current+1) so earlier debug scripts still show months.
-        # fetch_range will only use the months it needs.
-        current = date.today()
-        for y in range(2018, current.year + 1):
-            for m in range(1, 13):
-                ym = f"{y:04d}-{m:02d}"
-                month_urls[ym] = working(ym)
-        # Add current month explicitly (already covered), but harmless.
-
-        return month_urls
-
-    def _discover_draw_urls_for_month(self, month_url: str) -> list[str]:
-        r = self._request("GET", month_url)
-        soup = BeautifulSoup(r.text or "", "lxml")
-        urls: list[str] = []
+        urls: set[str] = set()
         for a in soup.find_all("a", href=True):
             href = a["href"]
-            if "/damacai/draw/4d-damacai-" in href:
-                urls.append(urljoin(month_url, href))
-        # Unique while preserving order
-        out: list[str] = []
-        seen: set[str] = set()
-        for u in urls:
-            if u not in seen:
-                out.append(u)
-                seen.add(u)
-        return out
+            if _DRAW_URL_RE.search(href):
+                urls.add(urljoin(BASE_HISTORY_URL, href))
 
-    def _extract_number_list(self, text: str, headings: list[str], n: int) -> list[str]:
+        # Deterministic order
+        return sorted(urls)
+
+    def _extract_numbers_ordered(self, soup: BeautifulSoup) -> list[str]:
         """
-        Find a heading, then grab next ~4000 chars, extract 4-digit numbers.
+        Robust extraction:
+        - prefer numbers that appear in td/li/span/div elements where the *entire* text is 4 digits
+        - keep order of appearance
         """
-        lower = text.lower()
-        for h in headings:
-            pos = lower.find(h.lower())
-            if pos == -1:
-                continue
-            window = text[pos : pos + 4000]
-            nums = re.findall(r"\b\d{4}\b", window)
-            out: list[str] = []
-            for x in nums:
-                if x not in out:
-                    out.append(x)
-            if len(out) >= n:
-                return out[:n]
-        return []
+        nums: list[str] = []
+
+        # In practice, results often appear in tables.
+        candidates = soup.find_all(["td", "li", "span", "div"])
+        for el in candidates:
+            t = el.get_text(" ", strip=True)
+            if re.fullmatch(r"\d{4}", t):
+                nums.append(t)
+
+        # If too many (rare), still keep in order; we'll slice later after sanity checks.
+        return nums
 
     def _parse_draw_page(self, url: str) -> dict | None:
-        r = self._request("GET", url)
-        soup = BeautifulSoup(r.text or "", "lxml")
-        text = soup.get_text(" ", strip=True)
+        html = self._get(url)
+        soup = BeautifulSoup(html, "html.parser")
 
-        # --- DATE (try text, else URL) ---
-        iso_date: str | None = None
-        for dp in [
-            r"Draw\s*Date\s*:\s*(\d{2}/\d{2}/\d{4})",
-            r"Date\s*:\s*(\d{2}/\d{2}/\d{4})",
-            r"Draw\s*On\s*:\s*(\d{2}/\d{2}/\d{4})",
-        ]:
-            mm = re.search(dp, text, re.I)
-            if mm:
-                iso_date = _iso_from_ddmmyyyy(mm.group(1))
-                break
-        if iso_date is None:
-            d = _extract_draw_date_from_url(url)
-            if d is not None:
-                iso_date = d.strftime("%Y-%m-%d")
-        if iso_date is None:
+        # date from URL
+        m = _DRAW_URL_RE.search(url)
+        if not m:
             return None
+        date_str = m.group(1)
 
-        # --- DRAW NO (try text, else BL-id) ---
-        draw_no: str | None = None
-        mm = re.search(r"\b(\d{3,5}/\d{2})\b", text)
-        if mm:
-            draw_no = mm.group(1)
-        if draw_no is None:
-            mm2 = re.search(r"-(\d+)$", url)
-            draw_no = f"BL-{mm2.group(1)}" if mm2 else f"BL-{iso_date}"
+        # draw_no from page text (e.g., 5358/22)
+        txt = soup.get_text(" ", strip=True)
+        draw_no_m = _DRAWNO_RE.search(txt)
+        draw_no = draw_no_m.group(1) if draw_no_m else ""
 
-        # --- NUMBERS ---
-        top3 = self._extract_number_list(
-            text,
-            headings=["1st Prize", "First Prize", "1st", "First"],
-            n=3,
-        )
-        starter = self._extract_number_list(
-            text,
-            headings=["Starter Prizes", "Starter Prize", "Starter"],
-            n=10,
-        )
-        consolation = self._extract_number_list(
-            text,
-            headings=["Consolation Prizes", "Consolation Prize", "Consolation"],
-            n=10,
-        )
+        # operator is always DMC for this scraper
+        operator = "DMC"
 
-        if len(top3) != 3 or len(starter) != 10 or len(consolation) != 10:
+        nums = self._extract_numbers_ordered(soup)
+
+        # Expect exactly 23 numbers in order: 1st/2nd/3rd + 10 starter + 10 consolation.
+        # If we got more than 23, try to take the *first* 23 (tables usually are ordered correctly).
+        if len(nums) < 23:
+            return None
+        if len(nums) > 23:
+            nums = nums[:23]
+
+        top3 = nums[0:3]
+        starter = nums[3:13]
+        consolation = nums[13:23]
+
+        # sanity: exact sizes
+        if not (len(top3) == 3 and len(starter) == 10 and len(consolation) == 10):
             return None
 
         return {
-            "date": iso_date,
+            "date": date_str,
             "draw_no": draw_no,
-            "operator": "DMC",
+            "operator": operator,
             "top3": top3,
             "starter": starter,
             "consolation": consolation,
         }
 
     def fetch_range(self, start_d: date, end_d: date) -> list[dict]:
-        months = _iter_months(start_d, end_d)
+        rows: list[dict] = []
+        seen: set[str] = set()
 
-        # Build month URLs directly (more reliable than scraping “history” index structure)
-        base = "https://www.businesslist.my/damacai/results/history?data[Lottery][date]="
-
+        print(f" businesslist {start_d} -> {end_d} (rate_per_sec={self.rate_per_sec})", flush=True)
+        months = list(_month_iter(start_d, end_d))
         print(
             f"[businesslist] months to fetch: {len(months)} ({months[0]} -> {months[-1]})",
             flush=True,
         )
 
-        draw_urls: list[str] = []
         for ym in months:
-            month_url = f"{base}{ym}"
-            urls = self._discover_draw_urls_for_month(month_url)
+            urls = self._discover_draw_urls_for_month(ym)
             print(f"[businesslist] month {ym}: found {len(urls)} 4D draw pages", flush=True)
-            draw_urls.extend(urls)
 
-        # Filter draw URLs by date in URL first (fast)
-        in_range_urls: list[str] = []
-        for u in draw_urls:
-            d = _extract_draw_date_from_url(u)
-            if d is None:
-                continue
-            if start_d <= d <= end_d:
-                in_range_urls.append(u)
-
-        # Unique while preserving order
-        uniq: list[str] = []
-        seen: set[str] = set()
-        for u in in_range_urls:
-            if u not in seen:
-                uniq.append(u)
+            for u in urls:
+                if u in seen:
+                    continue
                 seen.add(u)
 
-        print(f"[businesslist] total unique draw pages (in range): {len(uniq)}", flush=True)
+                m = _DRAW_URL_RE.search(u)
+                if not m:
+                    continue
+                d = date.fromisoformat(m.group(1))
+                if d < start_d or d > end_d:
+                    continue
 
-        rows: list[dict] = []
-        fail = 0
-        for i, u in enumerate(uniq, 1):
-            try:
                 row = self._parse_draw_page(u)
-            except Exception:
-                row = None
-            if row is None:
-                fail += 1
-                if fail <= 50:
-                    print(f"[businesslist] ({i}/{len(uniq)}) parse failed: {u}", flush=True)
-                continue
-            rows.append(row)
-            if i % 50 == 0:
-                print(f"[businesslist] progress: {i}/{len(uniq)} parsed={len(rows)}", flush=True)
+                if row is None:
+                    # keep going, don't explode
+                    continue
+                rows.append(row)
 
-        print(f"[businesslist] parsed {len(rows)}/{len(uniq)}", flush=True)
+        print(f"[businesslist] rows in-range: {len(rows)}", flush=True)
         return rows
+
+
+def results_to_df(rows: list[dict]) -> pd.DataFrame:
+    if not rows:
+        return pd.DataFrame(
+            columns=["date", "draw_no", "operator", "top3", "starter", "consolation"]
+        )
+    df = pd.DataFrame(rows)
+    for col in ["top3", "starter", "consolation"]:
+        df[col] = df[col].apply(lambda x: ",".join(x) if isinstance(x, list) else str(x))
+    return df
