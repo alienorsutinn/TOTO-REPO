@@ -1,43 +1,66 @@
 from __future__ import annotations
+
+import logging
 from pathlib import Path
+
 import pandas as pd
-from dmc4d.datasets.schemas import validate_draw_lists
-from dmc4d.logging import get_logger
 
-log = get_logger(__name__)
+logger = logging.getLogger(__name__)
+
+COLS = ["date", "draw_no", "operator", "top3", "starter", "consolation"]
 
 
-def upsert_results(rows: list[dict], out_path: Path) -> Path:
+def read_results(path: str | Path) -> pd.DataFrame:
+    path = Path(path)
+    if not path.exists():
+        return pd.DataFrame(columns=COLS)
+
+    df = pd.read_csv(path)
+    for c in COLS:
+        if c not in df.columns:
+            df[c] = ""
+
+    return df[COLS].copy()
+
+
+def upsert_results(rows: list[dict], out_path: str | Path) -> None:
+    """
+    Append/merge result rows into a CSV at out_path.
+
+    - If rows empty, still write a header-only CSV (so downstream reads don't crash).
+    - Deduplicate on (date, draw_no, operator).
+    - Sort by date.
+    """
+    out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    df_new = pd.DataFrame(rows)
 
-    # normalize
+    if not rows:
+        df_empty = pd.DataFrame(columns=COLS)
+        df_empty.to_csv(out_path, index=False)
+        logger.info("Saved results -> %s (rows=%s)", out_path, 0)
+        return
+
+    df_new = pd.DataFrame(rows).copy()
+
+    # Normalize list columns to comma-separated strings
     for col in ["top3", "starter", "consolation"]:
-        if col not in df_new.columns:
-            raise ValueError(f"Missing column: {col}")
+        if col in df_new.columns:
+            df_new[col] = df_new[col].apply(
+                lambda x: ",".join(x) if isinstance(x, list) else (x if x is not None else "")
+            )
 
-    for _, r in df_new.iterrows():
-        validate_draw_lists(r["top3"], r["starter"], r["consolation"])
+    for c in COLS:
+        if c not in df_new.columns:
+            df_new[c] = ""
+    df_new = df_new[COLS]
 
     if out_path.exists():
-        df_old = pd.read_csv(out_path)
-        # store lists as JSON strings in CSV; we keep them as python lists in memory
-        # if user edits: they should use CLI to regenerate.
-        pass
+        df_old = read_results(out_path)
+        df_all = pd.concat([df_old, df_new], ignore_index=True)
+        df_all = df_all.drop_duplicates(subset=["date", "draw_no", "operator"], keep="last")
+    else:
+        df_all = df_new
 
-    # store as CSV with json-ish representation for simplicity
-    df_out = df_new.copy()
-    df_out["top3"] = df_out["top3"].apply(lambda x: ",".join(x))
-    df_out["starter"] = df_out["starter"].apply(lambda x: ",".join(x))
-    df_out["consolation"] = df_out["consolation"].apply(lambda x: ",".join(x))
-    df_out.to_csv(out_path, index=False)
-    log.info("Saved results -> %s (rows=%d)", out_path, len(df_out))
-    return out_path
-
-
-def read_results(out_path: Path) -> pd.DataFrame:
-    df = pd.read_csv(out_path)
-    df["top3"] = df["top3"].apply(lambda s: [x.zfill(4) for x in str(s).split(",")])
-    df["starter"] = df["starter"].apply(lambda s: [x.zfill(4) for x in str(s).split(",")])
-    df["consolation"] = df["consolation"].apply(lambda s: [x.zfill(4) for x in str(s).split(",")])
-    return df
+    df_all = df_all.sort_values(["date", "draw_no"]).reset_index(drop=True)
+    df_all.to_csv(out_path, index=False)
+    logger.info("Saved results -> %s (rows=%s)", out_path, len(df_all))
