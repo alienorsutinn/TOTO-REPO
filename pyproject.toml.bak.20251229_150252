@@ -21,17 +21,13 @@ dependencies = [
   "matplotlib>=3.8",
 ]
 
-
 [project.optional-dependencies]
 dev = [
-  "mypy>=1.8",
   "pytest>=7.4",
   "ruff>=0.6",
+  "mypy>=1.8"
 ]
-stats = [
-  "scipy>=1.10",
-  "statsmodels>=0.14",
-]
+
 [project.scripts]
 dmc4d = "dmc4d.cli.main:app"
 
@@ -61,3 +57,5 @@ ignore = ["E203"]
 testpaths = ["tests"]
 
 
+[project.optional-dependencies]
+stats = ["scipy>=1.10", "statsmodels>=0.14"]

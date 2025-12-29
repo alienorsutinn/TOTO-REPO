@@ -481,9 +481,7 @@ def main():
             top_n=int(args.top),
             diversity_prefix=int(getattr(args, 'diversity_prefix', 0)),
             max_per_bucket=int(getattr(args, 'max_per_bucket', 0)),
-        )
-
-        actual =  actual_by_date.get(dt, set())
+        )actual = actual_by_date.get(dt, set())
         if not actual:
             # If target buckets missing for that date, skip
             continue

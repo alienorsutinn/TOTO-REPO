@@ -169,9 +169,10 @@ def score_universe(
     """
     d0, d1, d2, d3 = u_digits
     p01, p23 = u_pairs
+
     # digit log probs
     # P(d | pos) = (count + alpha) / (n_pos + 10*alpha)
-    scores = np.zeros(10000, dtype=np.float64)
+        scores = np.zeros(10000, dtype=np.float64)
 
     # Per-position digit multipliers (avoid double-counting digits via an extra additive term)
     pos_mult = np.ones(4, dtype=np.float64)
@@ -185,8 +186,7 @@ def score_universe(
         counts = fd.digit_counts[pos].astype(np.float64)
         denom = float(counts.sum() + 10.0 * alpha)
         probs = (counts + alpha) / denom
-        scores += w_digits * pos_mult[pos] * np.log(probs[dd])
-
+                scores += w_digits * pos_mult[pos] * np.log(probs[dd])
 
     if use_pairs:
         assert fd.pair01_counts is not None and fd.pair23_counts is not None
@@ -203,51 +203,15 @@ def score_universe(
     return scores
 
 
-def topn_from_scores(
-    u_str: np.ndarray,
-    scores: np.ndarray,
-    top_n: int,
-    diversity_prefix: int = 0,
-    max_per_bucket: int = 0,
-) -> List[str]:
+def topn_from_scores(u_str: np.ndarray, scores: np.ndarray, top_n: int) -> List[str]:
     """
     Deterministic: sort by score desc, then numeric asc.
-    Optional diversity cap:
-      - diversity_prefix=2, max_per_bucket=2 -> at most 2 picks per first-2-digit bucket (00..99)
     """
+    # argsort descending score, tie-breaker numeric asc
     u_num = np.fromiter((int(s) for s in u_str), dtype=np.int32, count=len(u_str))
-    order = np.lexsort((u_num, -scores))  # score desc, then numeric asc
-
-    # Default: plain top-N
-    if not diversity_prefix or not max_per_bucket or diversity_prefix < 0 or max_per_bucket < 0:
-        return u_str[order[:top_n]].tolist()
-
-    out: List[str] = []
-    counts: Dict[str, int] = {}
-
-    # First pass: enforce bucket cap
-    for idx in order:
-        s1 = u_str[int(idx)]
-        bucket = str(s1)[:diversity_prefix]
-        c = counts.get(bucket, 0)
-        if c >= max_per_bucket:
-            continue
-        counts[bucket] = c + 1
-        out.append(str(s1))
-        if len(out) >= top_n:
-            return out
-
-    # Fallback pass: if cap is too strict, fill remaining by score (avoid duplicates)
-    used = set(out)
-    for idx in order:
-        s1 = str(u_str[int(idx)])
-        if s1 in used:
-            continue
-        out.append(s1)
-        used.add(s1)
-        if len(out) >= top_n:
-            break
-    return out
+    order = np.lexsort((u_num, -scores))
+    picks = u_str[order[:top_n]].tolist()
+    return picks
 
 
 def monte_carlo_pvalues(
@@ -375,10 +339,6 @@ def main():
 
     ap.add_argument("--train-window-days", type=int, default=365)
     ap.add_argument("--top", type=int, default=20)
-    ap.add_argument("--diversity-prefix", type=int, default=0,
-                    help="If >0, limit picks per prefix bucket (e.g., 2 means 00..99 buckets). Default 0 disables.")
-    ap.add_argument("--max-per-bucket", type=int, default=0,
-                    help="Max picks per prefix bucket when diversity-prefix>0. Default 0 disables.")
     ap.add_argument("--alpha", type=float, default=1.0)
 
     ap.add_argument("--train-bucket", default="top3", help="bucket used to fit feature dists (default: top3)")
@@ -475,15 +435,9 @@ def main():
             posdigit_weights=posdigit_weights,
         )
 
-        picks = topn_from_scores(
-            u_str,
-            scores,
-            top_n=int(args.top),
-            diversity_prefix=int(getattr(args, 'diversity_prefix', 0)),
-            max_per_bucket=int(getattr(args, 'max_per_bucket', 0)),
-        )
+        picks = topn_from_scores(u_str, scores, top_n=int(args.top))
 
-        actual =  actual_by_date.get(dt, set())
+        actual = actual_by_date.get(dt, set())
         if not actual:
             # If target buckets missing for that date, skip
             continue
@@ -496,8 +450,6 @@ def main():
                 "date": str(dt.date()),
                 "train_window_days": int(args.train_window_days),
                 "top": int(args.top),
-                "diversity_prefix": int(getattr(args, "diversity_prefix", 0)),
-                "max_per_bucket": int(getattr(args, "max_per_bucket", 0)),
                 "alpha": float(args.alpha),
                 "train_bucket": args.train_bucket.lower(),
                 "target_buckets": ",".join(target_buckets),

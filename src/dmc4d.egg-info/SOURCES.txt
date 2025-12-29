@@ -16,6 +16,7 @@ src/dmc4d/backtest/__init__.py
 src/dmc4d/backtest/engine.py
 src/dmc4d/backtest/metrics.py
 src/dmc4d/backtest/report.py
+src/dmc4d/backtest/walkforward.py
 src/dmc4d/cli/__init__.py
 src/dmc4d/cli/main.py
 src/dmc4d/crowd/__init__.py
@@ -25,6 +26,7 @@ src/dmc4d/crowd/weights/__init__.py
 src/dmc4d/crowd/weights/default.py
 src/dmc4d/data_sources/__init__.py
 src/dmc4d/data_sources/base.py
+src/dmc4d/data_sources/businesslist.py
 src/dmc4d/data_sources/damacai_api.py
 src/dmc4d/data_sources/local_csv.py
 src/dmc4d/datasets/__init__.py
@@ -33,6 +35,8 @@ src/dmc4d/datasets/results_store.py
 src/dmc4d/datasets/schemas.py
 src/dmc4d/pricing/__init__.py
 src/dmc4d/pricing/payouts.py
+src/dmc4d/scoring/digit_bias.py
+src/dmc4d/scoring/model.py
 src/dmc4d/strategies/__init__.py
 src/dmc4d/strategies/base.py
 src/dmc4d/strategies/factory.py
@@ -40,4 +44,6 @@ src/dmc4d/strategies/low_crowd.py
 src/dmc4d/strategies/random_pick.py
 src/dmc4d/utils/__init__.py
 src/dmc4d/utils/strings.py
+tests/test_imports.py
+tests/test_scoring.py
 tests/test_smoke.py
